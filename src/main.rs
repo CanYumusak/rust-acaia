@@ -1,13 +1,13 @@
 mod constants;
 mod logging;
 mod decoding;
+mod encoding;
 
-use constants::{MAGIC1, MAGIC2, Settings, Message};
+use constants::{Message, Settings};
 
-use btleplug::api::{bleuuid::uuid_from_u16, Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType};
+use btleplug::api::{bleuuid::uuid_from_u16, Central, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use std::error::Error;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 use uuid::Uuid;
@@ -48,8 +48,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    ident(&acaia, &cmd_char).await;
-    request_heartbeat(&acaia, &cmd_char).await;
+    encoding::ident(&acaia, &cmd_char).await;
+    encoding::request_heartbeat(&acaia, &cmd_char).await;
 
     handle.await.unwrap();
     Ok(())
@@ -83,59 +83,6 @@ async fn handle_notifications(mut acaia: &Peripheral) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-
-async fn ident(device: &Peripheral, cmd_char: &Characteristic) {
-    let payload = &[0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d];
-    device.write(cmd_char, &*encode(11, payload), WriteType::WithoutResponse)
-        .await
-        .unwrap();
-    println!("Sent ident");
-}
-
-async fn request_heartbeat(device: &Peripheral, cmd_char: &Characteristic) {
-    let payload= &[0, 1, 1, 2, 2, 5, 3, 4];
-
-    let vec = encode_event_data(payload);
-    device.write(cmd_char, &*vec, WriteType::WithoutResponse)
-        .await
-        .unwrap();
-    println!("Sent Notificaton Request");
-}
-
-fn encode_event_data(payload: &[u8]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(payload.len() + 1);
-    bytes.push((payload.len() + 1) as u8);
-
-    for &byte in payload {
-        bytes.push(byte & 0xff);
-    }
-
-    encode(12, &bytes)
-}
-
-fn encode(msg_type: u8, payload: &[u8]) -> Vec<u8> {
-    let mut bytes = vec![0u8; 5 + payload.len()];
-    bytes[0] = MAGIC1;
-    bytes[1] = MAGIC2;
-    bytes[2] = msg_type;
-
-    let mut cksum1: u16 = 0;
-    let mut cksum2: u16 = 0;
-
-    for (i, &val) in payload.iter().enumerate() {
-        bytes[3 + i] = val;
-        if i % 2 == 0 {
-            cksum1 += val as u16;
-        } else {
-            cksum2 += val as u16;
-        }
-    }
-
-    bytes[payload.len() + 3] = (cksum1 & 0xFF) as u8;
-    bytes[payload.len() + 4] = (cksum2 & 0xFF) as u8;
-
-    bytes
-}
 
 async fn find_acaia_device(central: &Adapter) -> Option<Peripheral> {
     let devices_start_names = ["ACAIA"];

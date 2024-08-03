@@ -1,4 +1,6 @@
 mod constants;
+mod logging;
+mod decoding;
 
 use constants::{MAGIC1, MAGIC2, Settings, Message};
 
@@ -47,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     ident(&acaia, &cmd_char).await;
-    request_notifications(&acaia, &cmd_char).await;
+    request_heartbeat(&acaia, &cmd_char).await;
 
     handle.await.unwrap();
     Ok(())
@@ -90,7 +92,7 @@ async fn ident(device: &Peripheral, cmd_char: &Characteristic) {
     println!("Sent ident");
 }
 
-async fn request_notifications(device: &Peripheral, cmd_char: &Characteristic) {
+async fn request_heartbeat(device: &Peripheral, cmd_char: &Characteristic) {
     let payload= &[0, 1, 1, 2, 2, 5, 3, 4];
 
     let vec = encode_event_data(payload);

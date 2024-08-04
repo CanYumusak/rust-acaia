@@ -2,17 +2,19 @@ mod constants;
 mod logging;
 mod decoding;
 mod encoding;
+mod acaia_scanner;
 
 use constants::{Message, Settings};
+use encoding::{encode_event_data, encode};
 
-use btleplug::api::{bleuuid::uuid_from_u16, Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{bleuuid::uuid_from_u16, Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use std::error::Error;
+use std::thread::sleep;
 use std::time::Duration;
 use tokio::time;
 use uuid::Uuid;
 use futures::stream::StreamExt;
-
 
 const CHARACTERISTIC_UUID: Uuid = uuid_from_u16(0x2A80);
 
@@ -48,9 +50,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    encoding::ident(&acaia, &cmd_char).await;
-    encoding::request_heartbeat(&acaia, &cmd_char).await;
+    ident(&acaia, &cmd_char).await;
+    request_heartbeat(&acaia, &cmd_char).await;
+    sleep(Duration::from_secs(1));
 
+    tare(&acaia, cmd_char).await;
+    start_timer(&acaia, cmd_char).await;
+    sleep(Duration::from_secs(5));
+    stop_timer(&acaia, cmd_char).await;
+
+    sleep(Duration::from_secs(2));
+    reset_timer(&acaia, cmd_char).await;
     handle.await.unwrap();
     Ok(())
 }
@@ -100,3 +110,64 @@ async fn find_acaia_device(central: &Adapter) -> Option<Peripheral> {
     None
 }
 
+
+pub async fn request_settings(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &vec![0; 16];
+    device.write(cmd_char, encode(6, payload).as_slice(), WriteType::WithoutResponse)
+        .await
+        .unwrap();
+
+    println!("Sent Tare")
+}
+
+pub async fn tare(device: &Peripheral, cmd_char: &Characteristic) {
+    device.write(cmd_char, &*encode(4, &[0]), WriteType::WithoutResponse)
+        .await
+        .unwrap();
+
+    println!("Sent Tare")
+}
+
+pub async fn start_timer(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &[0, 0];
+    send_action(device, cmd_char, payload).await;
+    println!("Sent Start Timer")
+}
+
+pub async fn stop_timer(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &[0, 2];
+    send_action(device, cmd_char, payload).await;
+
+    println!("Sent Stop Timer")
+}
+
+pub async fn reset_timer(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &[0, 1];
+    send_action(device, cmd_char, payload).await;
+
+    println!("Sent Reset Timer")
+}
+
+async fn send_action(device: &Peripheral, cmd_char: &Characteristic, payload: &[u8]) {
+    return device.write(cmd_char, &*encode(13, payload), WriteType::WithoutResponse)
+        .await
+        .unwrap();
+}
+
+pub async fn ident(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &[0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d];
+    device.write(cmd_char, encode(11, payload).as_slice(), WriteType::WithoutResponse)
+        .await
+        .unwrap();
+    println!("Sent ident");
+}
+
+pub async fn request_heartbeat(device: &Peripheral, cmd_char: &Characteristic) {
+    let payload = &[0, 1, 1, 2, 2, 5, 3, 4];
+
+    let vec = encode_event_data(payload);
+    device.write(cmd_char, &*vec, WriteType::WithoutResponse)
+        .await
+        .unwrap();
+    println!("Sent Notificaton Request");
+}

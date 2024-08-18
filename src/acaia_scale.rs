@@ -7,7 +7,7 @@ use btleplug::platform::Peripheral as PeripheralStruct;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration, timeout};
 use crate::constants::{Message, Settings};
 use crate::encoding::{encode, encode_event_data};
 
@@ -55,10 +55,7 @@ impl AcaiaScale {
     }
 
     async fn handle_notifications(&self) -> Result<(), Box<dyn Error>> {
-        println!("Handle Notifications");
-
         let mut notification_stream = self.peripheral.notifications().await?;
-
         while let Some(notification) = notification_stream.next().await {
             if notification.uuid == CHARACTERISTIC_UUID {
                 let vec = &notification.value;
@@ -85,6 +82,14 @@ impl AcaiaScale {
         println!("End");
 
         Ok(())
+    }
+
+    pub(crate) async fn is_connected(&self) -> bool {
+        match timeout(Duration::from_millis(200), self.peripheral.is_connected()).await {
+            Ok(Ok(connected)) => connected,
+            Ok(Err(_)) => false, // Connection check failed
+            Err(_) => false // Timeout occurred
+        }
     }
 
     async fn set_weight(&self, weight: f32) {

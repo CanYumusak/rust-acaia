@@ -4,6 +4,7 @@ use btleplug::api::bleuuid::uuid_from_u16;
 use btleplug::api::{Characteristic, Peripheral, WriteType};
 use futures::StreamExt;
 use btleplug::platform::Peripheral as PeripheralStruct;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 use tokio::time::{sleep, Duration};
@@ -14,12 +15,18 @@ const CHARACTERISTIC_UUID: Uuid = uuid_from_u16(0x2A80);
 
 pub struct AcaiaScale {
     peripheral: PeripheralStruct,
+    pub(crate) current_weight: Mutex<Option<f32>>,
+    pub(crate) current_time: Mutex<Option<f32>>,
 }
 
 impl AcaiaScale {
     pub fn new(peripheral: PeripheralStruct) -> Self {
+        let current_weight = Mutex::new(None);
+        let current_time = Mutex::new(None);
         Self {
             peripheral,
+            current_weight,
+            current_time,
         }
     }
 
@@ -32,7 +39,7 @@ impl AcaiaScale {
 
 
         let handle = tokio::spawn({
-        let me = Arc::clone(&self);
+            let me = Arc::clone(&self);
             async move {
                 if let Err(e) = me.handle_notifications().await {
                     eprintln!("Error in notification handler: {:?}", e);
@@ -61,9 +68,16 @@ impl AcaiaScale {
                         settings.log();
                     }
                 } else if vec.len() > 0 && vec[0] == 8 {
-                    let message = Message::try_from(vec.as_slice());
-                    if let Ok(message) = message {
-                        message.log();
+                    if let Ok(message) = Message::try_from(vec.as_slice()) {
+                        match message {
+                            Message::Weight { value: w } => { self.set_weight(w).await }
+                            Message::Heartbeat { value: w, time: t } => {
+                                if let Some(w) = w { self.set_weight(w).await; }
+                                if let Some(t) = t { self.set_time(t).await; }
+                            }
+                            Message::Timer { time: t } => { self.set_time(t).await; }
+                            _ => {}  // Handle other message types as needed
+                        }
                     }
                 }
             }
@@ -71,6 +85,14 @@ impl AcaiaScale {
         println!("End");
 
         Ok(())
+    }
+
+    async fn set_weight(&self, weight: f32) {
+        *self.current_weight.lock().await = Some(weight);
+    }
+
+    async fn set_time(&self, time: f32) {
+        *self.current_time.lock().await = Some(time);
     }
 
     pub async fn request_settings(&self) {

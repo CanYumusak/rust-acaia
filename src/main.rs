@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::stream::StreamExt;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep};
 use crate::acaia_scanner::AcaiaScanner;
 
 mod constants;
@@ -34,6 +34,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     sleep(Duration::from_secs(2)).await;
     acaia_arc.reset_timer().await;
+
+    let start_time = Instant::now();
+    let duration = Duration::from_secs(20);
+    while start_time.elapsed() < duration {
+        let guard = *acaia_arc.current_weight.lock().await.unwrap();
+        println!("Weight: {:?}", guard);
+
+        // Sleep for 500ms
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 
     handle.await.unwrap();
     Ok(())

@@ -42,7 +42,7 @@ impl AcaiaScale {
             let me = Arc::clone(&self);
             async move {
                 if let Err(e) = me.handle_notifications().await {
-                    eprintln!("Error in notification handler: {:?}", e);
+                    println!("Error in notification handler: {:?}", e);
                 }
             }
         });
@@ -76,7 +76,14 @@ impl AcaiaScale {
                             _ => {}  // Handle other message types as needed
                         }
                     }
+                } else if vec.len() > 0 && vec[0] == 239 {
+                    // ignore - this is a protocol to announce following messages
+                } else if vec.len() > 0 && vec[0] == 10 {
+                    // button
+                    println!("Button press");
                 }
+                // let result = self.peripheral.is_connected().await;
+                // println!("Error in notification handler: {:?}", e);
             }
         }
         println!("End");
@@ -85,11 +92,18 @@ impl AcaiaScale {
     }
 
     pub(crate) async fn is_connected(&self) -> bool {
-        match timeout(Duration::from_millis(200), self.peripheral.is_connected()).await {
+        let value = match timeout(Duration::from_millis(200), self.peripheral.is_connected()).await {
             Ok(Ok(connected)) => connected,
             Ok(Err(_)) => false, // Connection check failed
             Err(_) => false // Timeout occurred
-        }
+        };
+
+        // workaround until I find better handling
+        if !value {
+            self.peripheral.disconnect().await.unwrap()
+        };
+
+        return value
     }
 
     async fn set_weight(&self, weight: f32) {
@@ -156,7 +170,6 @@ impl AcaiaScale {
         self.peripheral.write(&cmd_char, &*vec, WriteType::WithoutResponse)
             .await
             .unwrap();
-        println!("Sent Notificaton Request");
     }
 
     async fn send_action(&self, payload: &[u8]) {

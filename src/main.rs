@@ -37,7 +37,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let start_time = Instant::now();
     let duration = Duration::from_secs(50);
     while start_time.elapsed() < duration {
-        println!("Check connect");
         if acaia_arc.is_connected().await {
             let guard = acaia_arc.current_weight.lock().await;
             if let Some(weight) = *guard {
